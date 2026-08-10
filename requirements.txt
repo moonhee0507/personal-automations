@@ -1,0 +1,4 @@
+feedparser
+google-genai
+requests
+python-dotenv
