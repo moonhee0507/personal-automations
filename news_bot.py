@@ -146,11 +146,17 @@ def main():
         return
 
 
+DAILY_RUN_TIMES = ["00:00", "06:00", "12:00", "18:00"]
+SCHEDULE_TIMEZONE = "Asia/Seoul"
+
+
 def run_forever():
-    """Run main() immediately, then every 6 hours. For always-on hosting."""
-    logger.info("스케줄러 시작: 6시간마다 실행")
+    """Run main() once immediately (build/redeploy smoke test), then daily
+    at fixed KST times. For always-on hosting without OS-level cron."""
+    logger.info(f"스케줄러 시작: 배포 직후 1회 실행 + 매일 {DAILY_RUN_TIMES} ({SCHEDULE_TIMEZONE}) 실행")
     main()
-    schedule.every(6).hours.do(main)
+    for run_time in DAILY_RUN_TIMES:
+        schedule.every().day.at(run_time, SCHEDULE_TIMEZONE).do(main)
     while True:
         schedule.run_pending()
         time.sleep(60)
