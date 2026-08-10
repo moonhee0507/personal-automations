@@ -1,16 +1,21 @@
 """6-hour AI & Crypto newsletter bot: RSS -> Gemini -> Slack.
 
-Standalone single-run script. Intended to be triggered by crontab every
-6 hours (e.g. `0 */6 * * *`), not by an internal loop.
+Two run modes, both calling the same main():
+- `python news_bot.py`        -> single run, exits. For crontab (`0 */6 * * *`).
+- `python news_bot.py --loop` -> runs forever, calling main() every 6 hours
+  via `schedule`. For hosting platforms without OS-level cron (e.g. cloudtype),
+  where the process must stay alive.
 """
 
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import feedparser
 import requests
+import schedule
 from dotenv import load_dotenv
 from google import genai
 
@@ -141,5 +146,18 @@ def main():
         return
 
 
-if __name__ == "__main__":
+def run_forever():
+    """Run main() immediately, then every 6 hours. For always-on hosting."""
+    logger.info("스케줄러 시작: 6시간마다 실행")
     main()
+    schedule.every(6).hours.do(main)
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+
+if __name__ == "__main__":
+    if "--loop" in sys.argv:
+        run_forever()
+    else:
+        main()
