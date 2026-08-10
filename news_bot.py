@@ -28,8 +28,14 @@ GEMINI_MODEL = "gemini-3.5-flash"
 ARTICLE_LIMIT = 5
 
 RSS_FEEDS = {
-    "crypto": "https://www.coindesk.com/arc/outboundfeeds/rss/",
-    "ai": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "crypto": [
+        "https://www.coindesk.com/arc/outboundfeeds/rss/",
+        "https://www.theblock.co/rss.xml",
+    ],
+    "ai": [
+        "https://techcrunch.com/category/artificial-intelligence/feed/",
+        "https://www.technologyreview.com/feed/",
+    ],
 }
 
 PROMPT_TEMPLATE = """당신은 전문 테크/금융 뉴스레터 에디터입니다.
@@ -87,6 +93,21 @@ def fetch_rss(url, limit=ARTICLE_LIMIT):
     return articles
 
 
+def fetch_category(urls, limit=ARTICLE_LIMIT):
+    """Fetch top `limit` articles from each RSS url and combine them.
+
+    A single feed failing (site down, feed moved, etc.) is logged and
+    skipped rather than dropping the whole category.
+    """
+    articles = []
+    for url in urls:
+        try:
+            articles.extend(fetch_rss(url, limit))
+        except Exception:
+            logger.exception(f"RSS 피드 수집 실패, 건너뜀: {url}")
+    return articles
+
+
 def _format_articles(articles):
     lines = []
     for a in articles:
@@ -124,8 +145,8 @@ def main():
         sys.exit(1)
 
     try:
-        ai_articles = fetch_rss(RSS_FEEDS["ai"])
-        crypto_articles = fetch_rss(RSS_FEEDS["crypto"])
+        ai_articles = fetch_category(RSS_FEEDS["ai"])
+        crypto_articles = fetch_category(RSS_FEEDS["crypto"])
         logger.info(f"RSS 수집 완료: AI {len(ai_articles)}건, Crypto {len(crypto_articles)}건")
     except Exception:
         logger.exception("RSS 수집 중 오류 발생")
