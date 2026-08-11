@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import feedparser
@@ -169,15 +170,25 @@ def main():
 
 DAILY_RUN_TIMES = ["00:00", "06:00", "12:00", "18:00"]
 SCHEDULE_TIMEZONE = "Asia/Seoul"
+STARTUP_OVERLAP_WINDOW = timedelta(minutes=10)
 
 
 def run_forever():
     """Run main() once immediately (build/redeploy smoke test), then daily
-    at fixed KST times. For always-on hosting without OS-level cron."""
+    at fixed KST times. For always-on hosting without OS-level cron.
+
+    If the process starts within STARTUP_OVERLAP_WINDOW of a scheduled slot,
+    that slot's next run is pushed a day ahead so the immediate run above
+    doesn't get followed by a near-duplicate a few minutes later.
+    """
     logger.info(f"스케줄러 시작: 배포 직후 1회 실행 + 매일 {DAILY_RUN_TIMES} ({SCHEDULE_TIMEZONE}) 실행")
     main()
+    now = datetime.now()
     for run_time in DAILY_RUN_TIMES:
-        schedule.every().day.at(run_time, SCHEDULE_TIMEZONE).do(main)
+        job = schedule.every().day.at(run_time, SCHEDULE_TIMEZONE).do(main)
+        if job.next_run - now < STARTUP_OVERLAP_WINDOW:
+            job.next_run += timedelta(days=1)
+            logger.info(f"{run_time} 슬롯은 방금 실행한 것과 겹쳐서 다음날로 미룸 (다음 실행: {job.next_run})")
     while True:
         schedule.run_pending()
         time.sleep(60)
