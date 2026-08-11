@@ -133,7 +133,11 @@ def send_slack(message):
     """POST the newsletter text to the Slack incoming webhook."""
     response = requests.post(
         SLACK_WEBHOOK_URL,
-        json={"text": message},
+        json={
+            "text": message,
+            "unfurl_links": False,
+            "unfurl_media": False,
+        },
         timeout=10,
     )
     response.raise_for_status()
