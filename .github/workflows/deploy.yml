@@ -1,0 +1,66 @@
+name: Release & Stable Deployment Pipeline
+
+on:
+  # release/* 브랜치에 코드가 push(또는 PR 병합)되면 실행
+  push:
+    branches:
+      - 'release/*'
+  # Actions 탭에서 [Run workflow] 버튼으로 수동 테스트 실행 가능
+  workflow_dispatch:
+
+jobs:
+  # 1. RC 버전 자동 배포
+  deploy-rc:
+    name: 1. Deploy RC Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build & Deploy to RC
+        run: |
+          echo "🚀 RC 버전 자동 배포를 진행합니다."
+          # 실제 배포 명령어를 여기에 작성하세요. (예: npm run build, docker push 등)
+
+  # 2. 'someone' 수동 승인 후 Stable 배포
+  deploy-stable:
+    name: 2. Deploy Stable Version
+    needs: deploy-rc
+    runs-on: ubuntu-latest
+    # GitHub Settings > Environments에서 생성한 환경 이름 지정
+    # ('Stable' 환경의 Required reviewers에 'someone'가 지정되어 있어야 정지 후 승인을 요청합니다)
+    environment: Stable
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Stable
+        run: |
+          echo "✅ someone 승인 완료! Stable 버전을 배포합니다."
+          # 실제 프로덕션 배포 명령어를 여기에 작성하세요.
+
+  # 3. main 브랜치로 자동 병합
+  merge-to-main:
+    name: 3. Merge Release to Main
+    needs: deploy-stable
+    runs-on: ubuntu-latest
+    # main 브랜치 병합 권한 부여
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge release branch into main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "🔀 $BRANCH_NAME 브랜치를 main으로 병합합니다."
+          
+          # GitHub CLI를 이용해 main으로 PR 생성 및 자동 병합
+          gh pr create --base main --head "$BRANCH_NAME" --title "Chore: Merge $BRANCH_NAME to main after stable deploy" --body "Automated merge trigger" || true
+          gh pr merge "$BRANCH_NAME" --into main --merge || echo "이미 병합되었거나 수동 병합이 필요합니다."
