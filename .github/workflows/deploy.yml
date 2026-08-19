@@ -22,13 +22,13 @@ jobs:
           echo "🚀 RC 버전 자동 배포를 진행합니다."
           # 실제 배포 명령어를 여기에 작성하세요. (예: npm run build, docker push 등)
 
-  # 2. 'someone' 수동 승인 후 Stable 배포
+  # 2. 'moonhee0507' 수동 승인 후 Stable 배포
   deploy-stable:
     name: 2. Deploy Stable Version
     needs: deploy-rc
     runs-on: ubuntu-latest
     # GitHub Settings > Environments에서 생성한 환경 이름 지정
-    # ('Stable' 환경의 Required reviewers에 'someone'가 지정되어 있어야 정지 후 승인을 요청합니다)
+    # ('Stable' 환경의 Required reviewers에 'moonhee0507'가 지정되어 있어야 정지 후 승인을 요청합니다)
     environment: Stable
     steps:
       - name: Checkout Repository
@@ -36,7 +36,7 @@ jobs:
 
       - name: Deploy to Stable
         run: |
-          echo "✅ someone 승인 완료! Stable 버전을 배포합니다."
+          echo "✅ moonhee0507 승인 완료! Stable 버전을 배포합니다."
           # 실제 프로덕션 배포 명령어를 여기에 작성하세요.
 
   # 3. main 브랜치로 자동 병합
