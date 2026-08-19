@@ -14,6 +14,8 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import fcntl
+
 import feedparser
 import requests
 import schedule
@@ -74,6 +76,21 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger("news_bot")
+
+
+def acquire_singleton_lock():
+    """Prevent multiple app instances from running at the same time."""
+    lock_path = Path(__file__).resolve().parent / ".news_bot.lock"
+    lock_file = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        logger.critical("이미 실행 중인 news_bot 프로세스가 있어 종료합니다: %s", lock_path)
+        lock_file.close()
+        raise SystemExit(0)
+
+    logger.info("프로세스 락 획득: %s", lock_path)
+    return lock_file
 
 
 def fetch_rss(url, limit=ARTICLE_LIMIT):
@@ -199,7 +216,14 @@ def run_forever():
 
 
 if __name__ == "__main__":
-    if "--loop" in sys.argv:
-        run_forever()
-    else:
-        main()
+    lock_file = acquire_singleton_lock()
+    try:
+        if "--loop" in sys.argv:
+            run_forever()
+        else:
+            main()
+    finally:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_file.close()
