@@ -7,6 +7,7 @@ Two run modes, both calling the same main():
   where the process must stay alive.
 """
 
+import json
 import logging
 import os
 import sys
@@ -77,6 +78,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("news_bot")
 
+RUN_DEDUPE_WINDOW = timedelta(minutes=15)
+LAST_RUN_PATH = Path(__file__).resolve().parent / ".news_bot_last_run.json"
+
 
 def acquire_singleton_lock():
     """Prevent multiple app instances from running at the same time."""
@@ -91,6 +95,31 @@ def acquire_singleton_lock():
 
     logger.info("프로세스 락 획득: %s", lock_path)
     return lock_file
+
+
+def should_skip_run():
+    """Skip runs that start within a short dedupe window of the previous one."""
+    try:
+        if LAST_RUN_PATH.exists():
+            raw = LAST_RUN_PATH.read_text(encoding="utf-8").strip()
+            if raw:
+                data = json.loads(raw)
+                if isinstance(data, dict) and "last_run" in data:
+                    last_run = datetime.fromisoformat(data["last_run"])
+                    now = datetime.now()
+                    if now - last_run < RUN_DEDUPE_WINDOW:
+                        logger.info(
+                            "중복 실행 방지: 마지막 실행 시각 %s 이후 %s분이 지나지 않아 건너뜁니다.",
+                            last_run.isoformat(timespec="seconds"),
+                            int((now - last_run).total_seconds() // 60),
+                        )
+                        return True
+    except Exception:
+        logger.exception("마지막 실행 시각 읽기 실패")
+
+    now = datetime.now().isoformat(timespec="seconds")
+    LAST_RUN_PATH.write_text(json.dumps({"last_run": now}), encoding="utf-8")
+    return False
 
 
 def fetch_rss(url, limit=ARTICLE_LIMIT):
@@ -162,6 +191,9 @@ def send_slack(message):
 
 
 def main():
+    if should_skip_run():
+        return
+
     if not GEMINI_API_KEY or not SLACK_WEBHOOK_URL:
         logger.critical("GEMINI_API_KEY / SLACK_WEBHOOK_URL 환경변수가 설정되지 않았습니다.")
         sys.exit(1)
