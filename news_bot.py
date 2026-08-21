@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fcntl
@@ -89,7 +89,7 @@ def acquire_singleton_lock():
     try:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        logger.critical("이미 실행 중인 news_bot 프로세스가 있어 종료합니다: %s", lock_path)
+        logger.critical("이미 실행 중인 news_bot 프로세스가 있어 종료함: %s", lock_path)
         lock_file.close()
         raise SystemExit(0)
 
@@ -99,6 +99,7 @@ def acquire_singleton_lock():
 
 def should_skip_run():
     """Skip runs that start within a short dedupe window of the previous one."""
+    now = datetime.now(timezone.utc)
     try:
         if LAST_RUN_PATH.exists():
             raw = LAST_RUN_PATH.read_text(encoding="utf-8").strip()
@@ -106,10 +107,18 @@ def should_skip_run():
                 data = json.loads(raw)
                 if isinstance(data, dict) and "last_run" in data:
                     last_run = datetime.fromisoformat(data["last_run"])
-                    now = datetime.now()
-                    if now - last_run < RUN_DEDUPE_WINDOW:
+                    if last_run.tzinfo is None:
+                        last_run = last_run.replace(tzinfo=timezone.utc)
+
+                    if last_run > now:
+                        logger.warning(
+                            "마지막 실행 시각이 현재보다 미래라서 시간대 차이를 보정함: %s > %s",
+                            last_run.isoformat(),
+                            now.isoformat(),
+                        )
+                    elif now - last_run < RUN_DEDUPE_WINDOW:
                         logger.info(
-                            "중복 실행 방지: 마지막 실행 시각 %s 이후 %s분이 지나지 않아 건너뜁니다.",
+                            "중복 실행 방지: 마지막 실행 시각 %s 이후 %s분이 지나지 않아 건너뜀",
                             last_run.isoformat(timespec="seconds"),
                             int((now - last_run).total_seconds() // 60),
                         )
@@ -117,8 +126,7 @@ def should_skip_run():
     except Exception:
         logger.exception("마지막 실행 시각 읽기 실패")
 
-    now = datetime.now().isoformat(timespec="seconds")
-    LAST_RUN_PATH.write_text(json.dumps({"last_run": now}), encoding="utf-8")
+    LAST_RUN_PATH.write_text(json.dumps({"last_run": now.isoformat()}), encoding="utf-8")
     return False
 
 
@@ -171,7 +179,7 @@ def generate_newsletter(ai_articles, crypto_articles):
     )
     response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     if not response.text:
-        raise RuntimeError("Gemini 응답이 비어 있습니다.")
+        raise RuntimeError("Gemini 응답이 비어 있음")
     return response.text
 
 
@@ -195,7 +203,7 @@ def main():
         return
 
     if not GEMINI_API_KEY or not SLACK_WEBHOOK_URL:
-        logger.critical("GEMINI_API_KEY / SLACK_WEBHOOK_URL 환경변수가 설정되지 않았습니다.")
+        logger.critical("GEMINI_API_KEY / SLACK_WEBHOOK_URL 환경변수가 설정되지 않았음")
         sys.exit(1)
 
     try:
