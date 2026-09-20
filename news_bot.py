@@ -1,21 +1,15 @@
 """6-hour AI & Crypto newsletter bot: RSS -> Gemini -> Slack.
 
-Two run modes, both calling the same main():
-- `python news_bot.py`        -> single run, exits. For crontab (`0 */6 * * *`).
-- `python news_bot.py --loop` -> runs forever, calling main() every 6 hours
-  via `schedule`. For hosting platforms without OS-level cron (e.g. cloudtype),
-  where the process must stay alive.
+Always-on mode only for cloud-style hosting: `python news_bot.py --loop`.
+The process stays alive and calls `main()` on a fixed KST schedule via `schedule`.
 """
 
-import json
 import logging
 import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-import fcntl
 
 import feedparser
 import requests
@@ -51,9 +45,9 @@ PROMPT_TEMPLATE = """당신은 전문 테크/금융 뉴스레터 에디터입니
 - # 헤더 문법 금지
 - 아래 구조를 정확히 따를 것
 
-🗞️ *[6시간 AI & Crypto 브리핑]*
+🍪 *[6시간 AI & Crypto 브리핑]*
 
-🚀 *AI 기술 & 산업 동향*
+🤖 *AI 기술 & 산업 동향*
 (아래 AI 원문 기사 중 핵심 2~3개를 선별하여 기사마다 아래 형식 반복)
 *[기사 제목 한글 번역]*
 [핵심 내용 2줄 요약]
@@ -78,58 +72,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("news_bot")
 
-RUN_DEDUPE_WINDOW = timedelta(minutes=15)
-LAST_RUN_PATH = Path(__file__).resolve().parent / ".news_bot_last_run.json"
 
-
-def acquire_singleton_lock():
-    """Prevent multiple app instances from running at the same time."""
-    lock_path = Path(__file__).resolve().parent / ".news_bot.lock"
-    lock_file = open(lock_path, "w")
-    try:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        logger.critical("이미 실행 중인 news_bot 프로세스가 있어 종료함: %s", lock_path)
-        lock_file.close()
-        raise SystemExit(0)
-
-    logger.info("프로세스 락 획득: %s", lock_path)
-    return lock_file
-
-
-def should_skip_run():
-    """Skip runs that start within a short dedupe window of the previous one."""
-    now = datetime.now(timezone.utc)
-    try:
-        if LAST_RUN_PATH.exists():
-            raw = LAST_RUN_PATH.read_text(encoding="utf-8").strip()
-            if raw:
-                data = json.loads(raw)
-                if isinstance(data, dict) and "last_run" in data:
-                    last_run = datetime.fromisoformat(data["last_run"])
-                    if last_run.tzinfo is None:
-                        last_run = last_run.replace(tzinfo=timezone.utc)
-
-                    if last_run > now:
-                        logger.warning(
-                            "마지막 실행 시각이 현재보다 미래라서 시간대 차이를 보정함: %s > %s",
-                            last_run.isoformat(),
-                            now.isoformat(),
-                        )
-                    elif now - last_run < RUN_DEDUPE_WINDOW:
-                        logger.info(
-                            "중복 실행 방지: 마지막 실행 시각 %s 이후 %s분이 지나지 않아 건너뜀",
-                            last_run.isoformat(timespec="seconds"),
-                            int((now - last_run).total_seconds() // 60),
-                        )
-                        return True
-    except Exception:
-        logger.exception("마지막 실행 시각 읽기 실패")
-
-    LAST_RUN_PATH.write_text(json.dumps({"last_run": now.isoformat()}), encoding="utf-8")
-    return False
-
-
+# RSS 주소 하나에서 최신 뉴스 항목을 가져온다
+# 필요한 정보만 정리하여 반환한다
 def fetch_rss(url, limit=ARTICLE_LIMIT):
     """Fetch top `limit` entries from an RSS feed as title/link/summary dicts."""
     parsed = feedparser.parse(url)
@@ -148,6 +93,7 @@ def fetch_rss(url, limit=ARTICLE_LIMIT):
     return articles
 
 
+# 여러 RSS 피드에서 기사를 모아 하나의 목록을 합친다
 def fetch_category(urls, limit=ARTICLE_LIMIT):
     """Fetch top `limit` articles from each RSS url and combine them.
 
@@ -199,9 +145,6 @@ def send_slack(message):
 
 
 def main():
-    if should_skip_run():
-        return
-
     if not GEMINI_API_KEY or not SLACK_WEBHOOK_URL:
         logger.critical("GEMINI_API_KEY / SLACK_WEBHOOK_URL 환경변수가 설정되지 않았음")
         sys.exit(1)
@@ -234,7 +177,7 @@ SCHEDULE_TIMEZONE = "Asia/Seoul"
 STARTUP_OVERLAP_WINDOW = timedelta(minutes=10)
 
 
-def run_forever():
+def run():
     """Run main() once immediately (build/redeploy smoke test), then daily
     at fixed KST times. For always-on hosting without OS-level cron.
 
@@ -243,6 +186,7 @@ def run_forever():
     doesn't get followed by a near-duplicate a few minutes later.
     """
     logger.info(f"스케줄러 시작: 배포 직후 1회 실행 + 매일 {DAILY_RUN_TIMES} ({SCHEDULE_TIMEZONE}) 실행")
+    # 즉시 한 번 실행
     main()
     now = datetime.now()
     for run_time in DAILY_RUN_TIMES:
@@ -256,14 +200,4 @@ def run_forever():
 
 
 if __name__ == "__main__":
-    lock_file = acquire_singleton_lock()
-    try:
-        if "--loop" in sys.argv:
-            run_forever()
-        else:
-            main()
-    finally:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        finally:
-            lock_file.close()
+    run()
