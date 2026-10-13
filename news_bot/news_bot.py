@@ -22,7 +22,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL")
 
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 ARTICLE_LIMIT = 5
 
 RSS_FEEDS = {
