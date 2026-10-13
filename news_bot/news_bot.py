@@ -17,7 +17,7 @@ import schedule
 from dotenv import load_dotenv
 from google import genai
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL")

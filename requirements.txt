@@ -4,3 +4,6 @@ requests
 python-dotenv
 schedule
 pytz
+
+# dev / test
+pytest
